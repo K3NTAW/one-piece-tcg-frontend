@@ -151,6 +151,12 @@ export default function MultiplayerPage() {
       setOpponent(data.opponent);
       setGameState(data.gameState);
       setMessage(`Match found! Playing against ${data.opponent.username}`);
+      
+      // Debug logging
+      console.log('Match found - Current user ID:', user.id);
+      console.log('Match found - Opponent ID from event:', data.opponent.id);
+      console.log('Match found - Player IDs in game state:', Object.keys(data.gameState.players));
+      console.log('Match found - Calculated opponent ID:', Object.keys(data.gameState.players).find(id => id !== user.id));
     });
 
     newSocket.on('gameStarted', (data: { gameId: string; gameState: GameState; players: any[] }) => {
@@ -351,7 +357,7 @@ export default function MultiplayerPage() {
             <GameBoard
               gameState={gameState}
               currentPlayerId={user.id}
-              opponentId={opponent.id}
+              opponentId={Object.keys(gameState.players).find(id => id !== user.id) || opponent.id}
               onPlayCard={(cardId: string, target?: string) => {
                 if (socket && currentRoomId) {
                   socket.emit('gameAction', { 
@@ -376,14 +382,19 @@ export default function MultiplayerPage() {
                   });
                 }
               }}
-              onActivateEffect={(cardId: string) => {
-                if (socket && currentRoomId) {
-                  socket.emit('gameAction', { 
-                    roomId: currentRoomId, 
-                    action: { type: 'activateEffect', cardId, playerId: user.id } 
-                  });
-                }
-              }}
+                  onActivateEffect={(cardId: string, effectId?: string) => {
+                    if (socket && currentRoomId) {
+                      socket.emit('gameAction', { 
+                        roomId: currentRoomId, 
+                        action: { 
+                          type: 'useEffect', 
+                          cardId, 
+                          effectId: effectId || cardId, // Use effectId if provided, otherwise fallback to cardId
+                          playerId: user.id 
+                        } 
+                      });
+                    }
+                  }}
               onNextPhase={() => {
                 if (socket && currentRoomId) {
                   socket.emit('gameAction', { 

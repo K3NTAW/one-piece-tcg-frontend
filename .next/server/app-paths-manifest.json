@@ -1,5 +1,7 @@
 {
+  "/multiplayer/page": "app/multiplayer/page.js",
   "/auth/login/page": "app/auth/login/page.js",
   "/page": "app/page.js",
-  "/multiplayer/page": "app/multiplayer/page.js"
+  "/decks/page": "app/decks/page.js",
+  "/dashboard/page": "app/dashboard/page.js"
 }
