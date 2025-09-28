@@ -6,6 +6,13 @@ export default function AboutPage() {
   return (
     <div className="min-h-screen p-8 bg-gradient-to-br from-straw-hat-black via-gray-900 to-straw-hat-red">
       <div className="max-w-4xl mx-auto">
+        <div className="flex items-center gap-4 mb-8">
+          <Button asChild variant="outline" className="btn-secondary">
+            <Link href="/">
+              ← Back to Home
+            </Link>
+          </Button>
+        </div>
         <div className="text-center mb-12">
           <h1 className="text-6xl font-bold text-white mb-6 font-display">
             About One Piece TCG

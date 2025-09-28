@@ -18,14 +18,37 @@ interface UserStats {
   nextLevelExp: number;
 }
 
+interface Deck {
+  id: string;
+  name: string;
+  description: string;
+  isPublic: boolean;
+  createdAt: string;
+  updatedAt: string;
+  cards: Array<{
+    id: string;
+    cardId: string;
+    quantity: number;
+    card: {
+      id: string;
+      name: string;
+      cardType: string;
+      imageUrl?: string;
+      smallImageUrl?: string;
+    };
+  }>;
+}
+
 export default function DashboardPage() {
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, logout } = useAuth();
   const [stats, setStats] = useState<UserStats | null>(null);
+  const [decks, setDecks] = useState<Deck[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     if (isAuthenticated) {
       fetchUserStats();
+      fetchDecks();
     }
   }, [isAuthenticated]);
 
@@ -74,6 +97,44 @@ export default function DashboardPage() {
     }
   };
 
+  const fetchDecks = async () => {
+    try {
+      const token = localStorage.getItem('accessToken');
+      const response = await fetch('http://localhost:3001/decks', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setDecks(data);
+      }
+    } catch (error) {
+      console.error('Error fetching decks:', error);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      const token = localStorage.getItem('accessToken');
+      if (token) {
+        // Call logout API to invalidate token on server
+        await fetch('http://localhost:3001/auth/logout', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        });
+      }
+    } catch (error) {
+      console.error('Error during logout:', error);
+    } finally {
+      // Always call logout from context to clear local state
+      logout();
+    }
+  };
+
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -102,13 +163,22 @@ export default function DashboardPage() {
     <div className="min-h-screen p-8">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold text-white mb-2">
-            Welcome back, {user?.username}! 🏴‍☠️
-          </h1>
-          <p className="text-gray-300">
-            Ready to set sail on your next adventure?
-          </p>
+        <div className="mb-8 flex justify-between items-start">
+          <div>
+            <h1 className="text-4xl font-bold text-white mb-2">
+              Welcome back, {user?.username}! 🏴‍☠️
+            </h1>
+            <p className="text-gray-300">
+              Ready to set sail on your next adventure?
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            className="bg-white/10 border-white/20 text-white hover:bg-white/20"
+            onClick={handleLogout}
+          >
+            Logout
+          </Button>
         </div>
 
         {/* Level Progress */}
@@ -189,27 +259,27 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <Button asChild className="w-full btn-primary justify-start">
-                <Link href="/deck-builder">
-                  <span className="mr-2">⚔️</span>
-                  Build New Deck
-                </Link>
-              </Button>
-              <Button asChild className="w-full btn-secondary justify-start">
                 <Link href="/battle">
                   <span className="mr-2">⚔️</span>
                   Start Battle
                 </Link>
               </Button>
               <Button asChild className="w-full btn-secondary justify-start">
+                <Link href="/multiplayer">
+                  <span className="mr-2">🌊</span>
+                  Multiplayer
+                </Link>
+              </Button>
+              <Button asChild className="w-full btn-secondary justify-start">
+                <Link href="/decks">
+                  <span className="mr-2">⚔️</span>
+                  My Decks
+                </Link>
+              </Button>
+              <Button asChild className="w-full btn-secondary justify-start">
                 <Link href="/collection">
                   <span className="mr-2">📚</span>
                   View Collection
-                </Link>
-              </Button>
-              <Button asChild className="w-full btn-success justify-start">
-                <Link href="/battle">
-                  <span className="mr-2">⚡</span>
-                  Quick Battle
                 </Link>
               </Button>
               <Button asChild className="w-full btn-warning justify-start">
@@ -262,20 +332,54 @@ export default function DashboardPage() {
             <CardHeader>
               <CardTitle className="text-white">Featured Deck</CardTitle>
               <CardDescription className="text-gray-300">
-                Your most successful deck
+                {decks.length > 0 ? 'Your most recent deck' : 'No decks yet'}
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="text-center">
-                <div className="w-16 h-16 bg-gradient-to-br from-straw-hat-red to-straw-hat-blue rounded-lg mx-auto mb-3 flex items-center justify-center">
-                  <span className="text-2xl">⚔️</span>
+              {decks.length > 0 ? (
+                <div className="text-center">
+                  <div className="w-16 h-20 bg-gradient-to-br from-straw-hat-red to-straw-hat-blue rounded-lg mx-auto mb-3 flex items-center justify-center relative overflow-hidden">
+                    {(() => {
+                      const leaderCard = decks[0].cards.find(dc => dc.card.cardType === 'Leader')?.card;
+                      return leaderCard ? (
+                        <img 
+                          src={leaderCard.smallImageUrl || leaderCard.imageUrl} 
+                          alt={leaderCard.name}
+                          className="w-full h-full object-cover rounded"
+                          onError={(e) => {
+                            e.currentTarget.style.display = 'none';
+                            const nextElement = e.currentTarget.nextElementSibling as HTMLElement;
+                            if (nextElement) {
+                              nextElement.style.display = 'flex';
+                            }
+                          }}
+                        />
+                      ) : null;
+                    })()}
+                    <div className="absolute inset-0 flex items-center justify-center" style={{ display: 'none' }}>
+                      <span className="text-2xl">⚔️</span>
+                    </div>
+                  </div>
+                  <h4 className="text-white font-semibold mb-1">{decks[0].name}</h4>
+                  <p className="text-gray-400 text-sm mb-3">
+                    {decks[0].cards.reduce((sum, dc) => sum + dc.quantity, 0)} cards
+                  </p>
+                  <Button asChild size="sm" className="btn-primary">
+                    <Link href={`/deck-builder?edit=${decks[0].id}`}>Edit Deck</Link>
+                  </Button>
                 </div>
-                <h4 className="text-white font-semibold mb-1">Straw Hat Pirates</h4>
-                <p className="text-gray-400 text-sm mb-3">Win Rate: 75%</p>
-                <Button asChild size="sm" className="btn-primary">
-                  <Link href="/decks/straw-hat-pirates">View Deck</Link>
-                </Button>
-              </div>
+              ) : (
+                <div className="text-center">
+                  <div className="w-16 h-16 bg-gradient-to-br from-straw-hat-red to-straw-hat-blue rounded-lg mx-auto mb-3 flex items-center justify-center">
+                    <span className="text-2xl">⚔️</span>
+                  </div>
+                  <h4 className="text-white font-semibold mb-1">No Decks Yet</h4>
+                  <p className="text-gray-400 text-sm mb-3">Create your first deck!</p>
+                  <Button asChild size="sm" className="btn-primary">
+                    <Link href="/deck-builder">Create Deck</Link>
+                  </Button>
+                </div>
+              )}
             </CardContent>
           </Card>
 

@@ -159,6 +159,13 @@ export default function BattlePage() {
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-8">
+          <div className="flex items-center gap-4 mb-4">
+            <Button asChild variant="outline" className="btn-secondary">
+              <Link href="/dashboard">
+                ← Back to Dashboard
+              </Link>
+            </Button>
+          </div>
           <h1 className="text-4xl font-bold text-white mb-2">
             Battle Arena ⚔️
           </h1>

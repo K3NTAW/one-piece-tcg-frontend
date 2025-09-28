@@ -10,19 +10,15 @@ interface OnePieceCard {
   id: string;
   name: string;
   rarity: string;
-  type: string;
+  cardType: string;
   cost?: number;
   power?: number;
   color: string;
-  ability?: string;
-  images: {
-    small: string;
-    large: string;
-  };
-  set: {
-    id: string;
-    name: string;
-  };
+  effectText?: string;
+  imageUrl?: string;
+  smallImageUrl?: string;
+  largeImageUrl?: string;
+  setName: string;
 }
 
 interface ApiResponse {
@@ -149,6 +145,13 @@ export default function CollectionPage() {
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-8">
+          <div className="flex items-center gap-4 mb-4">
+            <Button asChild variant="outline" className="btn-secondary">
+              <Link href="/dashboard">
+                ← Back to Dashboard
+              </Link>
+            </Button>
+          </div>
           <h1 className="text-4xl font-bold text-white mb-2">
             Your Card Collection 📚
           </h1>
@@ -188,7 +191,9 @@ export default function CollectionPage() {
                 >
                   <option value="">All Types</option>
                   {filters.types.map((type) => (
-                    <option key={type} value={type}>{type}</option>
+                    <option key={type} value={type}>
+                      {type === 'Leader' ? `👑 ${type}` : type}
+                    </option>
                   ))}
                 </select>
                 <Button type="button" onClick={clearFilters} className="btn-secondary">
@@ -218,7 +223,7 @@ export default function CollectionPage() {
           <Card className="bg-white/10 backdrop-blur-sm border-white/20">
             <CardContent className="p-6 text-center">
               <div className="text-3xl font-bold text-straw-hat-blue mb-2">
-                {cards.filter(card => card.type === 'Leader').length}
+                {cards.filter(card => card.cardType === 'Leader').length}
               </div>
               <div className="text-gray-300 text-sm">Leaders</div>
             </CardContent>
@@ -244,26 +249,37 @@ export default function CollectionPage() {
         {!loading && (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-6">
             {cards.map((card) => (
-              <Card key={card.id} className="bg-white/10 backdrop-blur-sm border-white/20 card-hover">
+              <Card key={card.id} className={`bg-white/10 backdrop-blur-sm border-white/20 card-hover ${
+                card.cardType === 'Leader' ? 'border-yellow-400' : ''
+              }`}>
                 <CardContent className="p-4">
                   <div className="aspect-[3/4] bg-gradient-to-br from-straw-hat-red to-straw-hat-blue rounded-lg mb-3 flex items-center justify-center relative overflow-hidden">
-                    {card.images?.small ? (
-                      <img 
-                        src={card.images.small} 
-                        alt={card.name}
-                        className="w-full h-full object-cover"
-                        onError={(e) => {
-                          e.currentTarget.style.display = 'none';
-                          e.currentTarget.nextElementSibling.style.display = 'flex';
-                        }}
-                      />
-                    ) : null}
-                    <div className="absolute inset-0 flex items-center justify-center" style={{ display: card.images?.small ? 'none' : 'flex' }}>
-                      <span className="text-4xl">⚔️</span>
+                    <img 
+                      src={card.smallImageUrl || card.imageUrl} 
+                      alt={card.name}
+                      className="w-full h-full object-cover rounded-lg"
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none';
+                        const nextElement = e.currentTarget.nextElementSibling as HTMLElement;
+                        if (nextElement) {
+                          nextElement.style.display = 'flex';
+                        }
+                      }}
+                    />
+                    <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-straw-hat-red to-straw-hat-blue rounded-lg" style={{ display: 'none' }}>
+                      <div className="text-center">
+                        <span className="text-4xl mb-2">⚔️</span>
+                        <p className="text-white text-xs font-semibold">{card.name}</p>
+                      </div>
                     </div>
                   </div>
                   <h3 className="text-white font-semibold text-sm mb-1 truncate">{card.name}</h3>
-                  <p className="text-gray-400 text-xs mb-2">{card.type} • {card.set?.name || 'Unknown Set'}</p>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-gray-400 text-xs">{card.cardType} • {card.setName || 'Unknown Set'}</p>
+                    {card.cardType === 'Leader' && (
+                      <span className="text-yellow-400 text-xs font-bold">👑</span>
+                    )}
+                  </div>
                   <div className="flex justify-between items-center">
                     <span className={`text-xs font-bold ${
                       card.rarity === 'Common' ? 'text-gray-400' :
@@ -277,7 +293,11 @@ export default function CollectionPage() {
                     </span>
                     <span className="text-white text-xs">{card.color}</span>
                   </div>
-                  {card.cost && (
+                  {card.cardType === 'Leader' ? (
+                    <div className="mt-2 text-center">
+                      <span className="text-yellow-400 text-xs font-bold">LEADER CARD</span>
+                    </div>
+                  ) : card.cost && (
                     <div className="mt-2 text-center">
                       <span className="text-gray-400 text-xs">Cost: {card.cost}</span>
                       {card.power && <span className="text-gray-400 text-xs ml-2">Power: {card.power}</span>}

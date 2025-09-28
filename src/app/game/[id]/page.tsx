@@ -195,6 +195,13 @@ export default function GamePage() {
       <div className="max-w-7xl mx-auto">
         {/* Game Header */}
         <div className="mb-6">
+          <div className="flex items-center gap-4 mb-4">
+            <Button asChild variant="outline" className="btn-secondary">
+              <Link href="/battle">
+                ← Back to Battle
+              </Link>
+            </Button>
+          </div>
           <div className="flex justify-between items-center mb-4">
             <h1 className="text-3xl font-bold text-white">One Piece TCG Battle</h1>
             <div className="flex gap-2">

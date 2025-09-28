@@ -9,6 +9,7 @@ import { DndContext, DragEndEvent, DragOverlay, DragStartEvent, useDroppable } f
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { useSearchParams, useRouter } from 'next/navigation';
 import * as z from 'zod';
 
 interface OnePieceCard {
@@ -73,7 +74,10 @@ function LeaderDropZone({ leader, onRemove }: { leader?: OnePieceCard; onRemove:
                 className="w-full h-full object-cover rounded"
                 onError={(e) => {
                   e.currentTarget.style.display = 'none';
-                  e.currentTarget.nextElementSibling.style.display = 'flex';
+                  const nextElement = e.currentTarget.nextElementSibling as HTMLElement;
+                  if (nextElement) {
+                    nextElement.style.display = 'flex';
+                  }
                 }}
               />
               <div className="absolute inset-0 flex items-center justify-center" style={{ display: 'none' }}>
@@ -101,7 +105,7 @@ function LeaderDropZone({ leader, onRemove }: { leader?: OnePieceCard; onRemove:
         }`}>
           <div className="text-4xl mb-2">👑</div>
           <p className="text-sm">No leader selected</p>
-          <p className="text-xs">Drag a leader card here</p>
+          <p className="text-xs">Click a leader card to select</p>
         </div>
       )}
     </div>
@@ -110,8 +114,13 @@ function LeaderDropZone({ leader, onRemove }: { leader?: OnePieceCard; onRemove:
 
 export default function DeckBuilderPage() {
   const { isAuthenticated } = useAuth();
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const editDeckId = searchParams.get('edit');
+  
   const [allCards, setAllCards] = useState<OnePieceCard[]>([]);
   const [deck, setDeck] = useState<Deck>({
+    id: undefined,
     name: '',
     description: '',
     cards: [],
@@ -129,6 +138,10 @@ export default function DeckBuilderPage() {
     types: [],
     colors: [],
   });
+  const [isEditing, setIsEditing] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importText, setImportText] = useState('');
+  const [importName, setImportName] = useState('');
 
   const { register, handleSubmit, formState: { errors }, setValue, watch } = useForm({
     resolver: zodResolver(deckSchema),
@@ -143,8 +156,11 @@ export default function DeckBuilderPage() {
     if (isAuthenticated) {
       fetchCards();
       fetchFilters();
+      if (editDeckId) {
+        fetchDeckForEdit(editDeckId);
+      }
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, editDeckId]);
 
   useEffect(() => {
     fetchCards();
@@ -240,6 +256,79 @@ export default function DeckBuilderPage() {
     }
   };
 
+  const fetchDeckForEdit = async (deckId: string) => {
+    try {
+      const token = localStorage.getItem('accessToken');
+      const response = await fetch(`http://localhost:3001/decks/${deckId}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const deckData = await response.json();
+        setIsEditing(true);
+        
+        // Transform the deck data to match our interface
+        const transformedDeck: Deck = {
+          id: deckData.id,
+          name: deckData.name,
+          description: deckData.description || '',
+          isPublic: deckData.isPublic,
+          cards: deckData.cards.map((dc: any) => ({
+            id: dc.id,
+            card: {
+              id: dc.card.id,
+              apiId: dc.card.apiId || dc.card.id,
+              name: dc.card.name,
+              rarity: dc.card.rarity,
+              cardType: dc.card.cardType,
+              cost: dc.card.cost,
+              power: dc.card.power,
+              color: dc.card.color,
+              effectText: dc.card.effectText,
+              imageUrl: dc.card.imageUrl,
+              smallImageUrl: dc.card.smallImageUrl,
+              set: {
+                id: dc.card.setName || 'Unknown',
+                name: dc.card.setName || 'Unknown Set'
+              }
+            },
+            quantity: dc.quantity
+          })),
+          leader: deckData.leader ? {
+            id: deckData.leader.id,
+            apiId: deckData.leader.apiId || deckData.leader.id,
+            name: deckData.leader.name,
+            rarity: deckData.leader.rarity,
+            cardType: deckData.leader.cardType,
+            cost: deckData.leader.cost,
+            power: deckData.leader.power,
+            color: deckData.leader.color,
+            effectText: deckData.leader.effectText,
+            imageUrl: deckData.leader.imageUrl,
+            smallImageUrl: deckData.leader.smallImageUrl,
+            set: {
+              id: deckData.leader.setName || 'Unknown',
+              name: deckData.leader.setName || 'Unknown Set'
+            }
+          } : undefined
+        };
+
+        setDeck(transformedDeck);
+        
+        // Update form values
+        setValue('name', transformedDeck.name);
+        setValue('description', transformedDeck.description);
+        setValue('isPublic', transformedDeck.isPublic);
+      } else {
+        console.error('Failed to fetch deck for editing');
+      }
+    } catch (error) {
+      console.error('Error fetching deck for editing:', error);
+    }
+  };
+
   const getDeckStats = () => {
     const totalCards = deck.cards.reduce((sum, dc) => sum + dc.quantity, 0);
     const colorDistribution = deck.cards.reduce((acc, dc) => {
@@ -307,8 +396,14 @@ export default function DeckBuilderPage() {
         })),
       };
 
-      const response = await fetch('http://localhost:3001/decks', {
-        method: 'POST',
+      const url = isEditing && deck.id 
+        ? `http://localhost:3001/decks/${deck.id}`
+        : 'http://localhost:3001/decks';
+      
+      const method = isEditing ? 'PUT' : 'POST';
+
+      const response = await fetch(url, {
+        method,
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
@@ -317,22 +412,101 @@ export default function DeckBuilderPage() {
       });
 
       if (response.ok) {
-        alert('Deck saved successfully!');
-        // Reset deck
-        setDeck({
-          name: '',
-          description: '',
-          cards: [],
-          isPublic: false,
-        });
+        alert(isEditing ? 'Deck updated successfully!' : 'Deck saved successfully!');
+        // Redirect to decks page after successful save/update
+        router.push('/decks');
       } else {
-        alert('Failed to save deck');
+        alert(isEditing ? 'Failed to update deck' : 'Failed to save deck');
       }
     } catch (error) {
       console.error('Error saving deck:', error);
       alert('Error saving deck');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleExportDeck = async () => {
+    if (!deck.id) {
+      alert('Please save the deck first before exporting');
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('accessToken');
+      const response = await fetch(`http://localhost:3001/decks/export/${deck.id}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        
+        // Copy to clipboard
+        await navigator.clipboard.writeText(data.deckList);
+        alert('Deck list copied to clipboard!');
+      } else {
+        alert('Failed to export deck');
+      }
+    } catch (error) {
+      console.error('Error exporting deck:', error);
+      alert('Error exporting deck');
+    }
+  };
+
+  const handleImportDeck = async () => {
+    if (!importText.trim()) {
+      alert('Please paste a deck list');
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('accessToken');
+      const response = await fetch('http://localhost:3001/decks/parse', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          deckList: importText,
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        
+        // Set the deck name (use parsed name or custom name)
+        const deckName = importName || data.deckName || 'Imported Deck';
+        setDeck(prev => ({ ...prev, name: deckName }));
+        
+        // Set the leader
+        if (data.leader) {
+          setDeck(prev => ({ ...prev, leader: data.leader }));
+        }
+        
+        // Set the cards
+        const deckCards = data.cards.map((dc: any, index: number) => ({
+          id: `imported-${index}`, // Generate temporary ID
+          card: dc.card,
+          quantity: dc.quantity
+        }));
+        
+        setDeck(prev => ({ ...prev, cards: deckCards }));
+        
+        alert(`Deck parsed successfully! Found ${data.foundCards} cards, ${data.notFoundCards} cards not found. You can now review and save the deck.`);
+        
+        setShowImportModal(false);
+        setImportText('');
+        setImportName('');
+      } else {
+        const error = await response.json();
+        alert(error.message || 'Failed to parse deck list');
+      }
+    } catch (error) {
+      console.error('Error importing deck:', error);
+      alert('Error importing deck');
     }
   };
 
@@ -356,12 +530,38 @@ export default function DeckBuilderPage() {
         <div className="max-w-7xl mx-auto">
           {/* Header */}
           <div className="mb-8">
+            <div className="flex items-center gap-4 mb-4">
+              <Button asChild variant="outline" className="btn-secondary">
+                <Link href={isEditing ? "/decks" : "/dashboard"}>
+                  ← Back to {isEditing ? "My Decks" : "Dashboard"}
+                </Link>
+              </Button>
+            </div>
             <h1 className="text-4xl font-bold text-white mb-2">
-              Deck Builder ⚔️
+              {isEditing ? 'Edit Deck' : 'Deck Builder'} ⚔️
             </h1>
             <p className="text-gray-300">
-              Create and customize your One Piece TCG decks
+              {isEditing ? `Editing "${deck.name}"` : 'Create and customize your One Piece TCG decks'}
             </p>
+          </div>
+
+          {/* Import/Export Section */}
+          <div className="mb-6 flex gap-4">
+            <Button
+              type="button"
+              onClick={handleExportDeck}
+              disabled={!deck.leader || deck.cards.length === 0}
+              className="btn-secondary"
+            >
+              📤 Export Deck List
+            </Button>
+            <Button
+              type="button"
+              onClick={() => setShowImportModal(true)}
+              className="btn-secondary"
+            >
+              📥 Import Deck List
+            </Button>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -483,7 +683,11 @@ export default function DeckBuilderPage() {
                                 </span>
                                 <span className="text-white text-xs">{card.color}</span>
                               </div>
-                              {card.cost && (
+                              {card.cardType === 'Leader' ? (
+                                <div className="mt-1 text-center">
+                                  <span className="text-yellow-400 text-xs font-bold">LEADER CARD</span>
+                                </div>
+                              ) : card.cost && (
                                 <div className="mt-1 text-center">
                                   <span className="text-gray-400 text-xs">Cost: {card.cost}</span>
                                   {card.power && <span className="text-gray-400 text-xs ml-1">Power: {card.power}</span>}
@@ -537,11 +741,14 @@ export default function DeckBuilderPage() {
                 </Card>
 
                 {/* Leader */}
-                <Card className="bg-white/10 backdrop-blur-sm border-white/20">
+                <Card className={`bg-white/10 backdrop-blur-sm border-white/20 ${!deck.leader ? 'border-yellow-400/50 bg-yellow-400/5' : ''}`}>
                   <CardHeader>
-                    <CardTitle className="text-white">Leader</CardTitle>
+                    <CardTitle className="text-white flex items-center gap-2">
+                      👑 Leader Card
+                      {!deck.leader && <span className="text-yellow-400 text-sm">(Required)</span>}
+                    </CardTitle>
                     <CardDescription className="text-gray-300">
-                      Select a leader card (required)
+                      {deck.leader ? 'Leader card selected' : 'Click a leader card to select - this is required for your deck'}
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
@@ -555,9 +762,16 @@ export default function DeckBuilderPage() {
                 {/* Deck List */}
                 <Card className="bg-white/10 backdrop-blur-sm border-white/20">
                   <CardHeader>
-                    <CardTitle className="text-white">Deck List</CardTitle>
+                    <CardTitle className="text-white flex items-center justify-between">
+                      <span>Deck Cards</span>
+                      <span className={`text-lg font-bold ${deckStats.totalCards >= 50 && deckStats.totalCards <= 60 ? 'text-green-400' : 'text-red-400'}`}>
+                        {deckStats.totalCards}/50
+                      </span>
+                    </CardTitle>
                     <CardDescription className="text-gray-300">
-                      {deckStats.totalCards}/60 cards
+                      {deckStats.totalCards < 50 ? `Need ${50 - deckStats.totalCards} more cards` : 
+                       deckStats.totalCards > 60 ? `Remove ${deckStats.totalCards - 60} cards` :
+                       'Deck size is valid'}
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
@@ -612,8 +826,8 @@ export default function DeckBuilderPage() {
                         {deck.cards.length === 0 && (
                           <div className="text-center py-8 text-gray-400">
                             <div className="text-4xl mb-2">📚</div>
-                            <p className="text-sm">No cards in deck</p>
-                            <p className="text-xs">Drag cards here or click to add</p>
+                            <p className="text-sm font-medium">No cards in deck</p>
+                            <p className="text-xs">Drag cards here or click to add (need 50 total)</p>
                           </div>
                         )}
                       </div>
@@ -624,26 +838,64 @@ export default function DeckBuilderPage() {
                 {/* Deck Stats */}
                 <Card className="bg-white/10 backdrop-blur-sm border-white/20">
                   <CardHeader>
-                    <CardTitle className="text-white">Deck Statistics</CardTitle>
+                    <CardTitle className="text-white">Deck Requirements</CardTitle>
+                    <CardDescription className="text-gray-300 text-sm">
+                      Build a deck with exactly 50 cards + 1 leader
+                    </CardDescription>
                   </CardHeader>
-                  <CardContent className="space-y-3">
-                    <div className="flex justify-between">
-                      <span className="text-gray-300 text-sm">Total Cards:</span>
-                      <span className={`text-sm font-semibold ${deckStats.totalCards >= 50 && deckStats.totalCards <= 60 ? 'text-green-400' : 'text-red-400'}`}>
-                        {deckStats.totalCards}/60
-                      </span>
+                  <CardContent className="space-y-4">
+                    {/* Card Count */}
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <span className="text-gray-300 text-sm font-medium">Cards (50 required):</span>
+                        <span className={`text-lg font-bold ${deckStats.totalCards >= 50 && deckStats.totalCards <= 60 ? 'text-green-400' : 'text-red-400'}`}>
+                          {deckStats.totalCards}/50
+                        </span>
+                      </div>
+                      <div className="w-full bg-gray-700 rounded-full h-2">
+                        <div 
+                          className={`h-2 rounded-full transition-all duration-300 ${
+                            deckStats.totalCards >= 50 ? 'bg-green-400' : 
+                            deckStats.totalCards >= 40 ? 'bg-yellow-400' : 'bg-red-400'
+                          }`}
+                          style={{ width: `${Math.min((deckStats.totalCards / 50) * 100, 100)}%` }}
+                        ></div>
+                      </div>
+                      {deckStats.totalCards < 50 && (
+                        <p className="text-red-400 text-xs">
+                          Need {50 - deckStats.totalCards} more cards
+                        </p>
+                      )}
+                      {deckStats.totalCards > 60 && (
+                        <p className="text-red-400 text-xs">
+                          Too many cards! Remove {deckStats.totalCards - 60} cards
+                        </p>
+                      )}
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-300 text-sm">Leader:</span>
-                      <span className={`text-sm font-semibold ${deckStats.hasLeader ? 'text-green-400' : 'text-red-400'}`}>
-                        {deckStats.hasLeader ? 'Yes' : 'No'}
-                      </span>
+
+                    {/* Leader Requirement */}
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <span className="text-gray-300 text-sm font-medium">Leader (1 required):</span>
+                        <span className={`text-lg font-bold ${deckStats.hasLeader ? 'text-green-400' : 'text-red-400'}`}>
+                          {deckStats.hasLeader ? '✓' : '✗'}
+                        </span>
+                      </div>
+                      {!deckStats.hasLeader && (
+                        <p className="text-red-400 text-xs">
+                          Click a leader card to select it
+                        </p>
+                      )}
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-300 text-sm">Status:</span>
-                      <span className={`text-sm font-semibold ${deckStats.isValid ? 'text-green-400' : 'text-red-400'}`}>
-                        {deckStats.isValid ? 'Valid' : 'Invalid'}
-                      </span>
+
+                    {/* Overall Status */}
+                    <div className="pt-2 border-t border-white/20">
+                      <div className="flex justify-between items-center">
+                        <span className="text-gray-300 text-sm font-medium">Deck Status:</span>
+                        <span className={`text-lg font-bold ${deckStats.isValid ? 'text-green-400' : 'text-red-400'}`}>
+                          {deckStats.isValid ? 'Ready to Save!' : 'Not Ready'}
+                        </span>
+                      </div>
                     </div>
                     {Object.keys(deckStats.colorDistribution).length > 0 && (
                       <div>
@@ -667,7 +919,7 @@ export default function DeckBuilderPage() {
                   disabled={!deckStats.isValid || saving}
                   className="w-full btn-primary"
                 >
-                  {saving ? 'Saving...' : 'Save Deck'}
+                  {saving ? (isEditing ? 'Updating...' : 'Saving...') : (isEditing ? 'Update Deck' : 'Save Deck')}
                 </Button>
               </form>
             </div>
@@ -699,6 +951,84 @@ export default function DeckBuilderPage() {
           </Card>
         ) : null}
       </DragOverlay>
+
+      {/* Import Modal */}
+      {showImportModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <Card className="w-full max-w-2xl bg-white/10 backdrop-blur-sm border-white/20">
+            <CardHeader>
+              <CardTitle className="text-white">Import Deck List</CardTitle>
+              <CardDescription className="text-gray-300">
+                Paste a deck list in the format below to import a deck
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <label className="block text-white text-sm font-medium mb-2">
+                  Deck Name (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={importName}
+                  onChange={(e) => setImportName(e.target.value)}
+                  placeholder="Enter custom deck name"
+                  className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-straw-hat-red"
+                />
+              </div>
+              <div>
+                <label className="block text-white text-sm font-medium mb-2">
+                  Deck List
+                </label>
+                <textarea
+                  value={importText}
+                  onChange={(e) => setImportText(e.target.value)}
+                  placeholder="Paste deck list here..."
+                  rows={15}
+                  className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-straw-hat-red font-mono text-sm"
+                />
+              </div>
+              <div className="bg-white/5 p-3 rounded-lg">
+                <p className="text-gray-300 text-sm mb-2">Expected format:</p>
+                <pre className="text-gray-400 text-xs whitespace-pre-wrap">
+{`****** One Piece TCG Deck List ******
+
+Deck Name: My Deck
+Description: A great deck
+
+##Leader - 1
+
+* 1 Monkey.D.Luffy OP-01 001
+
+##Characters - 20
+
+* 4 Roronoa Zoro OP-01 002
+* 3 Nami OP-01 003
+...`}
+                </pre>
+              </div>
+              <div className="flex gap-3">
+                <Button
+                  onClick={handleImportDeck}
+                  disabled={!importText.trim()}
+                  className="btn-primary flex-1"
+                >
+                  Import Deck
+                </Button>
+                <Button
+                  onClick={() => {
+                    setShowImportModal(false);
+                    setImportText('');
+                    setImportName('');
+                  }}
+                  className="btn-secondary flex-1"
+                >
+                  Cancel
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </DndContext>
   );
 }

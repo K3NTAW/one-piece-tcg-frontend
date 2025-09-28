@@ -88,6 +88,9 @@ export default function Home() {
               <Button asChild size="lg" className="btn-secondary text-lg px-8 py-3">
                 <Link href="/battle">Start Battle</Link>
               </Button>
+              <Button asChild size="lg" className="btn-secondary text-lg px-8 py-3">
+                <Link href="/multiplayer">Multiplayer</Link>
+              </Button>
               <Button 
                 onClick={logout}
                 size="lg" 
